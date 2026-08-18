@@ -1,4 +1,5 @@
-import random
+import json
+import os
 import textwrap
 import time
 from datetime import datetime
@@ -421,6 +422,23 @@ st.markdown(
         font-size: 14px;
     }
 
+    .reading-status.waiting {
+        color: #f5a524;
+        border-color: rgba(245, 165, 36, 0.35);
+    }
+
+    .status-wait {
+        color: #f5a524;
+
+        margin-right: 6px;
+
+        font-size: 14px;
+    }
+
+    .reading-number.dim {
+        color: #4b5670;
+    }
+
 
     /* =========================
        INFORMATION PANEL
@@ -563,21 +581,48 @@ st.markdown(
 # ============================================================
 # SENSOR DATA
 # ============================================================
+# Real ESP32 integration point.
+#
+# When the ESP32 (or a small receiver script) has a reading, it should
+# write it to READING_FILE as JSON, e.g.:
+#   {"heart_rate": 78, "spo2": 98, "timestamp": 1755600000.123}
+#
+# "timestamp" must be time.time() (unix seconds) at the moment the
+# reading was taken. If no fresh reading exists (file missing, unreadable,
+# or older than STALE_SECONDS -- meaning no finger on the sensor / device
+# not sending data), the dashboard shows "--" instead of making up a value.
+
+READING_FILE = "latest_reading.json"
+STALE_SECONDS = 5
+
+
 def get_sensor_data():
 
-    # DEMO DATA
-    # Replace this section later with ESP32 communication.
+    if not os.path.exists(READING_FILE):
+        return None, None, False
 
-    random.seed(int(time.time()) // 2)
+    try:
+        with open(READING_FILE, "r") as f:
+            data = json.load(f)
 
-    heart_rate = random.randint(72, 84)
+        age = time.time() - float(data.get("timestamp", 0))
 
-    spo2 = random.randint(96, 99)
+        if age > STALE_SECONDS:
+            return None, None, False
 
-    return heart_rate, spo2
+        heart_rate = data.get("heart_rate")
+        spo2 = data.get("spo2")
+
+        if heart_rate is None or spo2 is None:
+            return None, None, False
+
+        return heart_rate, spo2, True
+
+    except (ValueError, TypeError, json.JSONDecodeError):
+        return None, None, False
 
 
-heart_rate, spo2 = get_sensor_data()
+heart_rate, spo2, is_live = get_sensor_data()
 
 updated = datetime.now().strftime("%I:%M:%S %p")
 
@@ -620,17 +665,30 @@ left, right = st.columns(
 # ============================================================
 with left:
 
+    if is_live:
+        heart_value = heart_rate
+        number_class = "reading-number"
+        status_class = "reading-status"
+        status_icon = '<span class="status-check">✓</span>'
+        status_text = "Reading received"
+    else:
+        heart_value = "--"
+        number_class = "reading-number dim"
+        status_class = "reading-status waiting"
+        status_icon = '<span class="status-wait">●</span>'
+        status_text = "Place finger on sensor"
+
     st.markdown(
         textwrap.dedent(f"""\
         <div class="reading-card heart-card">
             <div class="card-glow heart-glow"></div>
             <div class="card-icon heart-icon">♥</div>
             <div class="card-label heart-label">HEART RATE</div>
-            <div class="reading-number">{heart_rate}</div>
+            <div class="{number_class}">{heart_value}</div>
             <div class="reading-unit heart-unit">BPM</div>
-            <div class="reading-status">
-                <span class="status-check">✓</span>
-                Reading received
+            <div class="{status_class}">
+                {status_icon}
+                {status_text}
             </div>
         </div>
         """),
@@ -643,17 +701,30 @@ with left:
 # ============================================================
 with right:
 
+    if is_live:
+        spo2_value = spo2
+        number_class = "reading-number"
+        status_class = "reading-status"
+        status_icon = '<span class="status-check">✓</span>'
+        status_text = "Reading received"
+    else:
+        spo2_value = "--"
+        number_class = "reading-number dim"
+        status_class = "reading-status waiting"
+        status_icon = '<span class="status-wait">●</span>'
+        status_text = "Place finger on sensor"
+
     st.markdown(
         textwrap.dedent(f"""\
         <div class="reading-card spo2-card">
             <div class="card-glow spo2-glow"></div>
             <div class="card-icon spo2-icon">O₂</div>
             <div class="card-label spo2-label">BLOOD OXYGEN (SpO₂)</div>
-            <div class="reading-number">{spo2}</div>
+            <div class="{number_class}">{spo2_value}</div>
             <div class="reading-unit spo2-unit">%</div>
-            <div class="reading-status">
-                <span class="status-check">✓</span>
-                Reading received
+            <div class="{status_class}">
+                {status_icon}
+                {status_text}
             </div>
         </div>
         """),
@@ -664,19 +735,30 @@ with right:
 # ============================================================
 # DEVICE INFORMATION
 # ============================================================
+if is_live:
+    last_reading_value = updated
+    last_reading_sub = "Live sensor update"
+    connection_sub_class = "info-sub connected"
+    connection_text = "● Connected"
+else:
+    last_reading_value = "--"
+    last_reading_sub = "No reading yet"
+    connection_sub_class = "info-sub"
+    connection_text = "○ Waiting for device"
+
 st.markdown(
     f"""
 <div class="info-panel">
 <div class="info-block">
 <div class="info-label">LAST READING RECEIVED</div>
-<div class="info-value">{updated}</div>
-<div class="info-sub">Live sensor update</div>
+<div class="info-value">{last_reading_value}</div>
+<div class="info-sub">{last_reading_sub}</div>
 </div>
 <div class="info-divider"></div>
 <div class="info-block">
 <div class="info-label">DATA SOURCE</div>
 <div class="info-value">ESP32 Sensor</div>
-<div class="info-sub connected">● Connected</div>
+<div class="{connection_sub_class}">{connection_text}</div>
 </div>
 </div>
 
