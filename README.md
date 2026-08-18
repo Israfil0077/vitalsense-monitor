@@ -5,7 +5,7 @@ VitalSense Monitor is a simple Streamlit application designed to display two hea
 - Heart Rate (BPM)
 - SpO₂ / Blood Oxygen (%)
 
-The current version uses demo values so the application can be tested without an ESP32. The ESP32 connection will be added separately.
+The ESP32 isn't connected yet. Until it is, the dashboard shows `--` and "Place finger on sensor" instead of a real reading — it does not generate fake numbers. See **Testing Without the ESP32** below to simulate a reading locally.
 
 ## Project Structure
 
@@ -15,6 +15,7 @@ After extracting the project, the folder should look like this:
 vital_readings_streamlit/
 │
 ├── app.py
+├── simulate_reading.py
 ├── requirements.txt
 └── README.md
 ```
@@ -71,6 +72,27 @@ python --version
 
 6. A browser tab should open automatically at `http://localhost:8501`. If it doesn't, just copy that link into your browser.
 
+## Testing Without the ESP32
+
+The app reads from a file called `latest_reading.json` in the project folder. If that file is missing, or its reading is older than 5 seconds, the dashboard shows `--` for both values — this is the normal state until the ESP32 is wired up.
+
+To simulate a reading and see the dashboard show real-looking numbers, run this in a **second terminal** (with the venv activated) while `streamlit run app.py` is running:
+
+```bash
+python simulate_reading.py            # writes one reading, expires after 5s
+python simulate_reading.py --loop     # keeps sending a reading every 2s, like a finger staying on the sensor
+```
+
+Stop it with `Ctrl + C` and wait a few seconds — the dashboard should fall back to `--`.
+
+**For the real ESP32 integration later:** whatever script talks to the ESP32 just needs to write the same JSON shape to `latest_reading.json`:
+
+```json
+{"heart_rate": 78, "spo2": 98, "timestamp": 1755600000.123}
+```
+
+`timestamp` must be `time.time()` (unix seconds) at the moment the reading was taken. No changes to `app.py` should be needed once that's in place.
+
 ## Stopping the App
 
 Go back to the terminal and press `Ctrl + C`.
@@ -88,6 +110,6 @@ streamlit run app.py
 
 ## Notes
 
-- This app currently shows **demo/random values**, not real ESP32 data yet.
+- The dashboard shows `--` until a real reading arrives — it never displays fake/random values.
 - The dashboard auto-refreshes every couple of seconds.
 - This interface is for display purposes only and is **not a diagnostic tool**.
